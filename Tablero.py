@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Frase motivadora al inicio
+# 2. Frase motivadora
 st.markdown("""
     <div style="background-color: #FFE66D; padding: 15px; border-radius: 15px; text-align: center; margin-bottom: 20px;">
         <h3 style="color: #2B2D42; margin:0;">🌈 "Todo niño es un artista. El secreto es mantener la magia cuando crecemos." — Pablo Picasso 🚀</h3>
@@ -51,6 +51,8 @@ col1, col2 = st.columns([3, 2])
 
 with col1:
     st.subheader("🖼️ ¡Dibuja aquí tu obra de arte!")
+    
+    # Creamos el lienzo con una clave única fija
     canvas_result = st_canvas(
         fill_color="rgba(255, 230, 109, 0.4)",
         stroke_width=stroke_width,
@@ -59,7 +61,7 @@ with col1:
         height=canvas_height,
         width=canvas_width,
         drawing_mode=drawing_mode,
-        key="canvas_infantil_fijo",
+        key="canvas_infantil_key",
     )
     
     generar_btn = st.button("🚀 ¡Analizar mi dibujo y contar historia!", type="primary", use_container_width=True)
@@ -80,50 +82,48 @@ with col2:
     st.subheader("⭐ Resultado de tu Obra")
     
     if generar_btn:
-        image_data = None
+        has_drawings = False
+        img_data = None
         
-        # Extracción segura de la matriz de imagen evadiendo excepciones del componente
+        # Método a prueba de fallos: inspeccionar directamente el JSON de objetos del canvas
         if canvas_result is not None:
-            if hasattr(canvas_result, 'image_data') and canvas_result.image_data is not None:
-                image_data = canvas_result.image_data
+            # 1. Comprobar si hay elementos dibujados en el JSON
+            if canvas_result.json_data is not None:
+                objects = canvas_result.json_data.get("objects", [])
+                if len(objects) > 0:
+                    has_drawings = True
+            
+            # 2. Intentar extraer la matriz de pixeles
+            try:
+                img_data = canvas_result.image_data
+            except Exception:
+                img_data = None
 
-        if image_data is not None and np.any(image_data):
-            # Convertir a imagen procesable por OpenCV
-            img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
-            img_np = np.array(img)
+        if has_drawings or (img_data is not None and np.any(img_data)):
+            # Si image_data no se pudo leer directamente por el bug del componente, 
+            # procesamos la existencia del trazo confirmada por json_data
+            num_trazos = len(canvas_result.json_data.get("objects", [])) if canvas_result.json_data else 1
             
-            # Convertir a escala de grises y buscar trazos
-            gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-            _, thresh = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            pixeles_dibujados = np.sum(thresh > 0)
-            total_pixeles = thresh.shape[0] * thresh.shape[1]
-            porcentaje_cobertura = (pixeles_dibujados / total_pixeles) * 100
-            
-            # Evaluar si realmente se dibujó algo significativo
-            if len(contours) > 0 and porcentaje_cobertura > 0.01:
-                if porcentaje_cobertura > 10:
-                    estrellas = "⭐⭐⭐⭐⭐ / 5"
-                elif porcentaje_cobertura > 3:
-                    estrellas = "⭐⭐⭐⭐ / 5"
-                else:
-                    estrellas = "⭐⭐⭐ / 5"
-                
-                medalla = random.choice(MEDALLAS)
-                historia = random.choice(HISTORIAS)
-                
-                st.balloons()
-                st.success("¡Tu dibujo ha sido analizado con éxito!")
-                
-                st.markdown(f"### 🌟 Calificación: {estrellas}")
-                st.markdown(f"### {medalla}")
-                st.markdown("---")
-                st.markdown(f"**🔍 Elementos detectados:** Se identificaron **{len(contours)}** trazos/figuras en la hoja.")
-                st.markdown("---")
-                st.markdown("### 📖 Cuento del Lienzo:")
-                st.write(historia)
+            # Asignación de estrellas
+            if num_trazos >= 5:
+                estrellas = "⭐⭐⭐⭐⭐ / 5"
+            elif num_trazos >= 2:
+                estrellas = "⭐⭐⭐⭐ / 5"
             else:
-                st.warning("¡El lienzo aún está muy blanco! Haz más trazos antes de presionar el botón.")
+                estrellas = "⭐⭐⭐ / 5"
+            
+            medalla = random.choice(MEDALLAS)
+            historia = random.choice(HISTORIAS)
+            
+            st.balloons()
+            st.success("¡Tu dibujo ha sido analizado con éxito!")
+            
+            st.markdown(f"### 🌟 Calificación: {estrellas}")
+            st.markdown(f"### {medalla}")
+            st.markdown("---")
+            st.markdown(f"**🔍 Elementos detectados:** Se identificaron **{num_trazos}** elementos/trazos en la hoja.")
+            st.markdown("---")
+            st.markdown("### 📖 Cuento del Lienzo:")
+            st.write(historia)
         else:
-            st.warning("¡Haz un trazo sobre el papel para que la app pueda leer tu dibujo!")
+            st.warning("¡El lienzo está vacío! Por favor realiza un dibujo antes de presionar el botón.")
